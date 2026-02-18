@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
+    #game { position: relative; width: 100vw; height: 50vh; background: #87CEEB; overflow: hidden; }
+    #world { position: absolute; width: 10000px; height: 100%; left: 0; top: 0; }
+    #ground { position: absolute; bottom: 0; width: 10000px; height: 40px; background: #8b4513; border-top: 4px solid #5d2e0d; }
+    #player { position: absolute; width: 40px; height: 40px; bottom: 40px; left: 50px; z-index: 10; }
+    .fish { position: absolute; font-size: 25px; z-index: 5; }
+    .enemy { position: absolute; width: 40px; height: 40px; text-align: center; font-size: 25px; bottom: 40px; }
+    #ui { width: 100vw; height: 50vh; background: #222; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 15px; }
+    .btn { width: 80px; height: 80px; background: #444; color: #fff; border-radius: 50%; text-align: center; line-height: 80px; font-weight: bold; user-select: none; -webkit-tap-highlight-color: transparent; border: 4px solid #666; }
+    #boot-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-weight: bold; pointer-events: none; z-index: 100; }
+  </style>
+</head>
+<body onclick="bootMission()">
+  <div id="game">
+    <div id="boot-msg">TAP TO START MISSION</div>
+    <div id="world">
+      <div id="ground"></div>
+      <div id="enemies"></div>
+      <img src="https://yuu073148.github.io/creator-game/character.png" id="player">
+    </div>
+  </div>
+  <div id="ui">
+    <div class="btn" id="btnL">←</div>
+    <div class="btn" id="btnR">→</div>
+    <div class="btn" id="btnF" style="background:#058; border-color:#0cf;">FISH</div>
+    <div class="btn" id="btnJ" style="background:#228; border-color:#55f;">JUMP</div>
+  </div>
+
+<script>
+  const YT = "https://www.youtube.com/@S_even7";
+  const player = document.getElementById('player'), world = document.getElementById('world'), e_div = document.getElementById('enemies');
+  let ctx, px = 50, py = 40, vx = 0, vy = 0, active = false, keys = {L:0, R:0};
+
+  function bootMission() {
+    if (active) return;
+    active = true;
+    document.getElementById('boot-msg').style.display = 'none';
+    
+    // オーディオ強制解凍
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+
+    // 敵の配備
+    for(let i=0; i<30; i++) {
+      let div = document.createElement('div'); div.className = 'enemy';
+      div.style.left = (800 + i*400) + 'px'; div.innerHTML = ['🐤','🐢','🐬'][i%3]; e_div.appendChild(div);
+    }
+
+    // ボタンイベント直結
+    const setup = (id, k, f) => {
+      const b = document.getElementById(id);
+      const start = (e) => { e.preventDefault(); if(k) keys[k]=1; if(f) f(); };
+      const end = (e) => { e.preventDefault(); if(k) keys[k]=0; };
+      b.addEventListener('touchstart', start); b.addEventListener('touchend', end);
+      b.addEventListener('mousedown', start); b.addEventListener('mouseup', end);
+    };
+    setup('btnL','L'); setup('btnR','R');
+    setup('btnJ',null,() => { if(py <= 40) vy = 16; });
+    setup('btnF',null,fire);
+
+    setInterval(loop, 30);
+  }
+
+  function fire() {
+    const f = document.createElement('div'); f.className = 'fish'; f.innerHTML = '🐟';
+    f.style.left = (px + 40) + 'px'; f.style.bottom = (py + 10) + 'px'; world.appendChild(f);
+    let fx = px + 40;
+    const ft = setInterval(() => {
+      fx += 15; f.style.left = fx + 'px';
+      document.querySelectorAll('.enemy').forEach(en => {
+        if (Math.abs(fx - parseInt(en.style.left)) < 30) { 
+          en.remove(); f.remove(); clearInterval(ft);
+          if(ctx) { const o = ctx.createOscillator(); o.type='sine'; o.connect(ctx.destination); o.start(); o.stop(ctx.currentTime+0.1); }
+        }
+      });
+      if (fx > px + 600) { f.remove(); clearInterval(ft); }
+    }, 20);
+  }
+
+  function loop() {
+    vx = (keys.R - keys.L) * 8;
+    if (vx !== 0) player.style.transform = vx > 0 ? "scaleX(1)" : "scaleX(-1)";
+    px += vx; vy -= 0.8; py += vy;
+    if (py <= 40) { py = 40; vy = 0; }
+    player.style.left = px + 'px'; player.style.bottom = py + 'px';
+    world.style.left = -(px - 50) + 'px';
+
+    document.querySelectorAll('.enemy').forEach(en => {
+      let ex = parseInt(en.style.left);
+      if (Math.abs(px - ex) < 25 && Math.abs(py - 40) < 25) {
+        if (vy < 0 && py > 55) { en.remove(); vy = 12; }
+        else { alert("MISSION FAILED"); location.reload(); }
+      }
+    });
+    if (px > 9500) { alert("COMPLETE! チャンネル登録してね！"); window.open(YT, '_blank'); location.reload(); }
+  }
+</script>
+</body>
+</html>
