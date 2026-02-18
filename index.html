@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
+    #game-container { position: relative; width: 100vw; height: 55vh; background: #87CEEB; overflow: hidden; border-bottom: 4px solid #fff; }
+    #game-world { position: absolute; width: 10500px; height: 100%; left: 0; top: 0; }
+    .ground { position: absolute; bottom: 0; height: 40px; background: #8b4513; border-top: 4px solid #5d2e0d; z-index: 1; }
+    #player { position: absolute; width: 40px; height: 40px; z-index: 10; bottom: 40px; left: 50px; }
+    .enemy, .water { position: absolute; z-index: 8; text-align: center; }
+    .enemy { width: 40px; height: 40px; font-size: 28px; line-height: 40px; bottom: 40px; }
+    .water { width: 15px; height: 15px; background: cyan; border-radius: 50%; border: 1px solid white; bottom: 60px; }
+    .fish-weapon { position: absolute; font-size: 25px; z-index: 5; }
+    .obj { position: absolute; z-index: 7; box-sizing: border-box; }
+    .item-block { background: #4169e1; border: 2px solid #fff; border-radius: 4px; }
+    .brick { background: #cd853f; border: 2px solid #8b4513; }
+    .item-wing { position: absolute; font-size: 25px; z-index: 6; pointer-events: none; }
+    #info-panel { position: absolute; top: 10px; right: 20px; color: #fff; font-weight: bold; z-index: 100; text-shadow: 2px 2px #000; }
+    .flag { position: absolute; width: 50px; height: 35px; left: 8px; top: 0; background: #0a0; border: 1px solid #000; }
+    #goal-flag { background: #fff; border: 1px solid #ccc; }
+    #goal-flag::after { content: ""; position: absolute; top: 7px; left: 15px; width: 20px; height: 20px; background: red; border-radius: 50%; }
+    #ui-panel { width: 100vw; height: 45vh; background: #222; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1000; }
+    .btn { width: 75px; height: 75px; background: #444; border: 3px solid #777; border-radius: 50%; color: #fff; font-weight: bold; text-align: center; line-height: 75px; user-select: none; margin: 0 5px; -webkit-tap-highlight-color: transparent; }
+  </style>
+</head>
+<body onclick="boot()">
+  <div id="game-container">
+    <div id="info-panel">SCORE: <span id="sc">0</span> | <span id="it">ITEM: NONE</span></div>
+    <div id="game-world">
+      <div id="grounds"></div>
+      <div id="entities"></div>
+      <div style="position:absolute; left:20px; bottom:40px; border-left:4px solid #ddd; height:120px;"><div class="flag"></div></div>
+      <img src="https://yuu073148.github.io/creator-game/character.png" id="player">
+      <div style="position:absolute; left:9800px; bottom:40px; border-left:4px solid #ddd; height:250px;"><div class="flag" id="goal-flag"></div></div>
+    </div>
+  </div>
+  <div id="ui-panel">
+    <div class="btn" id="btnL">←</div><div class="btn" id="btnR">→</div>
+    <div class="btn" id="btnF" style="background:#058;">FISH</div><div class="btn" id="btnJ" style="background:#228;">JUMP</div>
+  </div>
+
+<script>
+  const YT = "https://www.youtube.com/@S_even7";
+  const player = document.getElementById('player'), world = document.getElementById('game-world'), ent = document.getElementById('entities'), scEl = document.getElementById('sc'), itEl = document.getElementById('it'), groundsDiv = document.getElementById('grounds');
+  let ctx, px = 50, py = 40, vx = 0, vy = 0, score = 0, jumps = 0, active = false, hasWing = false, invin = 0, isGoal = false;
+  const gravity = 0.8, keys = {L:0, R:0};
+
+  function boot() {
+    if (active) return; active = true;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    initWorld();
+    setInterval(loop, 30);
+    const notes = [262, 330, 392, 523]; let ni = 0;
+    setInterval(() => { if(!isGoal && active && invin===0) playSound(notes[ni++%4], 0.1, 'square'); }, 400);
+  }
+
+  function playSound(f, d, t='triangle') {
+    if(!ctx) return;
+    let o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = t; o.frequency.setValueAtTime(f, ctx.currentTime);
+    if(f===350) o.frequency.exponentialRampToValueAtTime(600, ctx.currentTime+d);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(); g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+d); o.stop(ctx.currentTime+d);
+  }
+
+  function initWorld() {
+    ent.innerHTML = ''; groundsDiv.innerHTML = '';
+    // 穴のある地面生成
+    let gx = 0;
+    while(gx < 10000) {
+      let gw = 400 + Math.random()*800;
+      let g = document.createElement('div'); g.className='ground';
+      g.style.left=gx+'px'; g.style.width=gw+'px'; groundsDiv.appendChild(g);
+      gx += gw + 150 + Math.random()*100; // 150~250pxの穴
+    }
+    // オブジェクトと敵
+    for(let i=0; i<40; i++){
+      let rx = 1000 + i * 250 + Math.random() * 100;
+      // ブロック高さ固定 (120px)
+      if(i % 2 === 0) {
+        let type = (i % 6 === 0) ? 'item-block' : 'brick';
+        let b = document.createElement('div'); b.className='obj ' + type;
+        let h = (i % 4 === 0) ? 120 : 180; // 段差
+        b.style.left=rx+'px'; b.style.bottom=h+'px'; b.style.width='45px'; b.style.height='45px';
+        b.dataset.item = (type === 'item-block') ? 'wing' : 'none'; ent.appendChild(b);
+      }
+      if(i % 3 === 0) {
+        let e = document.createElement('div'); e.className='enemy';
+        e.style.left=(rx + 100)+'px'; e.innerHTML=(i%6===0)?'🐬':'🐤';
+        e.dataset.dir="-1"; e.dataset.shot="0"; ent.appendChild(e);
+      }
+    }
+  }
+
+  function loop() {
+    if(isGoal) return;
+    if(invin > 0) { invin--; player.style.opacity = (invin%4<2)?'0.3':'1'; }
+    vx = (keys.R - keys.L) * 8;
+    px += vx; vy -= gravity; py += vy;
+    
+    let onGround = false;
+    document.querySelectorAll('.ground').forEach(g => {
+      let gx = parseInt(g.style.left), gw = parseInt(g.style.width);
+      if(px+30 > gx && px+10 < gx+gw && py <= 40 && py >= 30) { py=40; vy=0; jumps=0; onGround=true; }
+    });
+    if(py < -50) location.reload(); // 落下死
+
+    // ブロック判定
+    document.querySelectorAll('.obj').forEach(b => {
+      let bx = parseInt(b.style.left), by = parseInt(b.style.bottom);
+      if(px+35 > bx && px < bx+45) {
+        if(py+vy <= by+45 && py >= by+40 && vy <= 0) { py=by+45; vy=0; jumps=0; onGround=true; }
+        else if(py+40 >= by && py+35 < by && vy > 0) {
+          py=by-40; vy=-2; playSound(600,0.1);
+          if(b.dataset.item === 'wing') { popItem(bx, by+50); b.dataset.item='none'; }
+        }
+        else if(py < by+45 && py+40 > by) { px -= vx; }
+      }
+    });
+
+    // 敵・水
+    document.querySelectorAll('.enemy, .water').forEach(en => {
+      let ex = parseInt(en.style.left), ey = parseInt(en.style.bottom || 40);
+      if(en.className==='enemy') {
+        ex += parseFloat(en.dataset.dir)*3; en.style.left = ex+'px';
+        if(Math.random() < 0.01) en.dataset.dir = -en.dataset.dir;
+        // 🐬水鉄砲 (出現時付近で1回)
+        if(en.innerHTML==='🐬' && en.dataset.shot==="0" && Math.abs(px-ex)<400) {
+          shoot(ex, ey); en.dataset.shot="1";
+        }
+      } else { ex -= 5; en.style.left = ex+'px'; if(ex < px-600) en.remove(); }
+
+      if(Math.abs(px-ex)<30 && Math.abs(py-ey)<30 && invin<=0) {
+        if(vy < 0 && py > ey+10 && en.className==='enemy') { en.remove(); vy=13; score+=100; scEl.innerText=score; playSound(800,0.1); }
+        else { damage(); }
+      }
+    });
+
+    player.style.left=px+'px'; player.style.bottom=py+'px';
+    world.style.left=-(px-50)+'px';
+    if(px > 9780) { isGoal = true; alert("MISSION COMPLETE!"); window.open(YT,'_blank'); location.reload(); }
+  }
+
+  function popItem(x, y) {
+    let w = document.createElement('div'); w.className='item-wing'; w.innerHTML='🪽';
+    w.style.left=x+'px'; w.style.bottom=y+'px'; ent.appendChild(w);
+    let c = setInterval(() => {
+      if(Math.abs(px-x)<40 && Math.abs(py-y)<40) { hasWing=true; itEl.innerText='ITEM: 🪽'; w.remove(); clearInterval(c); playSound(1200,0.5,'sine'); }
+    }, 30);
+  }
+
+  function shoot(x, y) {
+    let w = document.createElement('div'); w.className='water'; w.style.left=x+'px'; w.style.bottom=(y+20)+'px'; ent.appendChild(w);
+  }
+
+  function damage() {
+    if(hasWing) {
+      hasWing=false; itEl.innerText='ITEM: NONE'; invin=100;
+      px -= 80; py += 10; vy = 8; // のけぞり
+      playSound(200,0.3,'sawtooth');
+    } else { location.reload(); }
+  }
+
+  const L=document.getElementById('btnL'), R=document.getElementById('btnR'), J=document.getElementById('btnJ'), F=document.getElementById('btnF');
+  const prevent = (e) => { e.preventDefault(); boot(); };
+  L.addEventListener('touchstart', (e) => { prevent(e); keys.L=1; });
+  L.addEventListener('touchend', (e) => { e.preventDefault(); keys.L=0; });
+  R.addEventListener('touchstart', (e) => { prevent(e); keys.R=1; });
+  R.addEventListener('touchend', (e) => { e.preventDefault(); keys.R=0; });
+  J.addEventListener('touchstart', (e) => { prevent(e); if(py<=40 || (hasWing && jumps<2)) { vy=16; jumps++; playSound(350,0.3); } });
+  F.addEventListener('touchstart', (e) => { prevent(e); fireFish(); });
+
+  function fireFish() {
+    playSound(800, 0.1, 'sine');
+    const f = document.createElement('div'); f.className = 'fish-weapon'; f.innerHTML = '🐟';
+    f.style.left = (px + 40) + 'px'; f.style.bottom = (py + 10) + 'px'; world.appendChild(f);
+    let fx = px + 40;
+    const ft = setInterval(() => {
+      fx += 18; f.style.left = fx + 'px';
+      document.querySelectorAll('.enemy').forEach(en => {
+        if (Math.abs(fx - parseInt(en.style.left)) < 30) { en.remove(); f.remove(); score+=50; scEl.innerText=score; clearInterval(ft); }
+      });
+      if (fx > px + 600) { f.remove(); clearInterval(ft); }
+    }, 20);
+  }
+</script>
+</body>
+</html>
