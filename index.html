@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; touch-action: none; font-family: sans-serif; }
+    #game-container { position: relative; width: 100vw; height: 55vh; background: #87CEEB; overflow: hidden; border-bottom: 4px solid #fff; }
+    #game-world { position: absolute; width: 10500px; height: 100%; left: 0; top: 0; }
+    #static-ground { position: absolute; bottom: 0; width: 10500px; height: 40px; background: #8b4513; border-top: 4px solid #5d2e0d; z-index: 1; }
+    #player { position: absolute; width: 40px; height: 40px; z-index: 10; bottom: 40px; left: 50px; }
+    .enemy { position: absolute; width: 40px; height: 40px; text-align: center; font-size: 28px; line-height: 40px; z-index: 8; bottom: 40px; }
+    .obj { position: absolute; z-index: 7; box-sizing: border-box; }
+    .brick { background: #cd853f; border: 2px solid #8b4513; }
+    .item-block { background: #4169e1; border: 2px solid #fff; border-radius: 4px; box-shadow: 0 0 10px #4169e1; }
+    .item-popup { position: absolute; font-size: 25px; z-index: 6; transition: 0.5s; }
+    .pipe { background: #2e8b57; border: 4px solid #006400; border-radius: 8px 8px 0 0; }
+    #info-panel { position: absolute; top: 10px; right: 20px; color: #fff; font-weight: bold; z-index: 100; text-shadow: 2px 2px #000; }
+    .pole { position: absolute; bottom: 40px; width: 8px; height: 150px; background: #ddd; border: 1px solid #999; }
+    .flag { position: absolute; width: 50px; height: 35px; left: 8px; top: 0; background: #0a0; }
+    #goal-flag { background: #fff; border: 1px solid #ccc; }
+    #goal-flag::after { content: ""; position: absolute; top: 7px; left: 15px; width: 20px; height: 20px; background: red; border-radius: 50%; }
+    #ui-panel { width: 100vw; height: 45vh; background: #222; display: flex; align-items: center; justify-content: center; position: relative; z-index: 1000; }
+    .btn-group { display: flex; gap: 15px; }
+    .btn { width: 75px; height: 75px; background: #444; border: 3px solid #777; border-radius: 50%; color: #fff; font-weight: bold; text-align: center; line-height: 75px; user-select: none; }
+  </style>
+</head>
+<body onclick="bootGame()">
+  <div id="game-container">
+    <div id="info-panel">SCORE: <span id="sc">0</span> / 1000</div>
+    <div id="game-world">
+      <div id="static-ground"></div>
+      <div id="entities"></div>
+      <div class="pole" style="left: 30px;"><div class="flag"></div></div>
+      <img src="https://yuu073148.github.io/creator-game/character.png" id="player">
+      <div class="pole" style="left: 9800px; height: 300px;"><div class="flag" id="goal-flag"></div></div>
+    </div>
+  </div>
+  <div id="ui-panel">
+    <div class="btn-group">
+      <div class="btn" id="btn-L">←</div><div class="btn" id="btn-R">→</div>
+      <div class="btn" id="btn-F" style="background:#058;">FISH</div>
+      <div class="btn" id="btn-J" style="background:#228;">JUMP</div>
+    </div>
+  </div>
+
+<script>
+  const YT_URL = "https://www.youtube.com/@S_even7";
+  const player = document.getElementById('player'), world = document.getElementById('game-world'), entities = document.getElementById('entities'), scEl = document.getElementById('sc');
+  let px = 50, py = 40, vx = 0, vy = 0, score = 0, jumpCount = 0, isGoal = false, active = false;
+  const gravity = 0.8, keys = { L: false, R: false };
+
+  function bootGame() {
+    if (active) return; active = true;
+    initLevel();
+    setInterval(gameLoop, 30);
+  }
+
+  function initLevel() {
+    entities.innerHTML = '';
+    // 土管
+    [1200, 3500, 6500].forEach(x => createObj(x, 40, 60, 80, 'pipe'));
+    // アイテムブロック
+    [[800,140],[2000,160],[4000,140],[6000,180],[8000,140]].forEach(pos => createObj(pos[0], pos[1], 40, 40, 'item-block'));
+    // 敵（初期配置と移動方向を設定）
+    for(let i=0; i<25; i++) {
+      const e = document.createElement('div'); e.className = 'enemy';
+      e.style.left = (1500 + i*400)+'px'; e.innerHTML = ['🐤','🐬'][i%2];
+      e.dataset.dir = "-1";
+      entities.appendChild(e);
+    }
+  }
+
+  function createObj(x, y, w, h, type) {
+    const o = document.createElement('div'); o.className = 'obj ' + type;
+    o.style.left = x+'px'; o.style.bottom = y+'px'; o.style.width = w+'px'; o.style.height = h+'px';
+    entities.appendChild(o);
+  }
+
+  function gameLoop() {
+    if(isGoal) return;
+    vx = (keys.R - keys.L) * 8;
+    px += vx; vy -= gravity; py += vy;
+    if (py <= 40) { py = 40; vy = 0; jumpCount = 0; }
+
+    // オブジェクト衝突判定
+    document.querySelectorAll('.obj').forEach(o => {
+      const ox = parseInt(o.style.left), oy = parseInt(o.style.bottom);
+      const ow = parseInt(o.style.width), oh = parseInt(o.style.height);
+      if (px + 35 > ox && px < ox + ow) {
+        if (py + vy <= oy + oh && py >= oy + oh - 10 && vy <= 0) { py = oy + oh; vy = 0; jumpCount = 0; }
+        else if (py + 40 >= oy && py + 30 < oy && vy > 0) {
+          py = oy - 40; vy = -2;
+          if(o.classList.contains('item-block')) popItem(ox, oy + oh);
+        }
+        else if (py < oy + oh && py + 40 > oy) { px -= vx; }
+      }
+    });
+
+    // 敵の移動と判定
+    document.querySelectorAll('.enemy').forEach(en => {
+      let ex = parseInt(en.style.left), dir = parseFloat(en.dataset.dir);
+      ex += dir * 3; en.style.left = ex + 'px';
+      if(Math.random() < 0.01) en.dataset.dir = -dir; // ランダムに反転
+
+      if (Math.abs(px - ex) < 30 && Math.abs(py - 40) < 30) {
+        if (vy < 0 && py > 50) { en.remove(); vy = 12; addScore(100); }
+        else { location.reload(); }
+      }
+    });
+
+    player.style.left = px + 'px'; player.style.bottom = py + 'px';
+    world.style.left = -(px - 50) + 'px';
+    if (px > 9780) { isGoal = true; alert("MISSION COMPLETE!"); window.open(YT_URL, '_blank'); location.reload(); }
+  }
+
+  function popItem(x, y) {
+    const item = document.createElement('div'); item.className = 'item-popup';
+    item.innerHTML = '🌟'; item.style.left = x + 'px'; item.style.bottom = y + 'px';
+    entities.appendChild(item);
+    addScore(50);
+    setTimeout(() => { item.style.bottom = (y + 50) + 'px'; item.style.opacity = '0'; }, 10);
+    setTimeout(() => item.remove(), 500);
+  }
+
+  function addScore(n) { score = Math.min(1000, score + n); scEl.innerText = score; }
+
+  const bL = document.getElementById('btn-L'), bR = document.getElementById('btn-R'), bJ = document.getElementById('btn-J'), bF = document.getElementById('btn-F');
+  bL.ontouchstart = (e) => { e.preventDefault(); keys.L = true; }; bL.ontouchend = () => keys.L = false;
+  bR.ontouchstart = (e) => { e.preventDefault(); keys.R = true; }; bR.ontouchend = () => keys.R = false;
+  bJ.ontouchstart = (e) => { e.preventDefault(); if(py <= 40 || vy === 0 || jumpCount < 1) { vy = 16; jumpCount++; } };
+  bF.ontouchstart = (e) => { e.preventDefault(); /* FISH弾の発射処理（簡易版） */ };
+</script>
+</body>
+</html>
